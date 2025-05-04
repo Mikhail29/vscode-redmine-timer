@@ -1,0 +1,63 @@
+{
+	"name": "redmine-by-devylm",
+	"displayName": "Redmine by DeVylM",
+	"description": "Lightweight automatic time tracker for Redmine with task context. Built by DeVylM.",
+	"version": "0.3.0",
+	"publisher": "devylm",
+	"engines": {
+		"vscode": "^1.60.0"
+	},
+	"activationEvents": [
+		"*"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "devylmRedmine.toggleTracking",
+				"title": "Redmine by DeVylM: Start/Stop Tracking"
+			},
+			{
+				"command": "devylmRedmine.sendTimeEntry",
+				"title": "Redmine by DeVylM: Send Time Entry"
+			},
+			{
+				"command": "devylmRedmine.setActiveIssue",
+				"title": "Redmine by DeVylM: Set Active Issue ID"
+			},
+			{
+				"command": "devylmRedmine.setSettings",
+				"title": "Redmine by DeVylM: Set API/Project Settings"
+			}
+		],
+		"configuration": {
+			"title": "Redmine by DeVylM",
+			"properties": {
+				"redmineByDeVylm.apiKey": {
+					"type": "string",
+					"default": "",
+					"description": "Redmine API Key"
+				},
+				"redmineByDeVylm.redmineUrl": {
+					"type": "string",
+					"default": "",
+					"description": "Redmine server URL (e.g. https://rm.example.com)"
+				},
+				"redmineByDeVylm.projectId": {
+					"type": "string",
+					"default": "",
+					"description": "Redmine project identifier"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "tsc -p ./",
+		"compile": "tsc -watch -p ./"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.3",
+		"@types/vscode": "^1.60.0",
+		"typescript": "^4.4.3"
+	}
+}
