@@ -2,7 +2,7 @@
 	"name": "redmine-by-devylm",
 	"displayName": "Redmine by DeVylM",
 	"description": "Lightweight automatic time tracker for Redmine with task context. Built by DeVylM.",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"publisher": "devylm",
 	"categories": [
 		"Other"

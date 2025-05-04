@@ -97,14 +97,32 @@ function activate(context) {
         }
     }, 10000);
     context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.showContextMenu', async () => {
-        const selection = await vscode.window.showQuickPick([
-            projectData.tracking ? (0, lang_1.t)('stopTracking') : (0, lang_1.t)('startTracking'),
-            (0, lang_1.t)('setIssue'),
-            (0, lang_1.t)('enterTime'),
-            (0, lang_1.t)('setActivity'),
-            (0, lang_1.t)('sendTime'),
-            (0, lang_1.t)('sendTimeAndChangeStatus'),
-        ], { placeHolder: (0, lang_1.t)('placeholder') });
+        const autoTracking = vscode.workspace
+            .getConfiguration('redmineByDeVylm')
+            .get('autoTracking');
+        let menuItems = [];
+        if (autoTracking) {
+            menuItems = [
+                (0, lang_1.t)('setIssue'),
+                (0, lang_1.t)('enterTime'),
+                (0, lang_1.t)('setActivity'),
+                (0, lang_1.t)('sendTime'),
+                (0, lang_1.t)('sendTimeAndChangeStatus'),
+            ];
+        }
+        else {
+            menuItems = [
+                projectData.tracking ? (0, lang_1.t)('stopTracking') : (0, lang_1.t)('startTracking'),
+                (0, lang_1.t)('setIssue'),
+                (0, lang_1.t)('enterTime'),
+                (0, lang_1.t)('setActivity'),
+                (0, lang_1.t)('sendTime'),
+                (0, lang_1.t)('sendTimeAndChangeStatus'),
+            ];
+        }
+        const selection = await vscode.window.showQuickPick(menuItems, {
+            placeHolder: (0, lang_1.t)('placeholder'),
+        });
         switch (selection) {
             case (0, lang_1.t)('stopTracking'):
                 stopTracking();

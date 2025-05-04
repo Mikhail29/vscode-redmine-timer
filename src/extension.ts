@@ -100,17 +100,31 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			'devylmRedmine.showContextMenu',
 			async () => {
-				const selection = await vscode.window.showQuickPick(
-					[
+				const autoTracking = vscode.workspace
+					.getConfiguration('redmineByDeVylm')
+					.get<boolean>('autoTracking')
+				let menuItems = []
+				if (autoTracking) {
+					menuItems = [
+						t('setIssue'),
+						t('enterTime'),
+						t('setActivity'),
+						t('sendTime'),
+						t('sendTimeAndChangeStatus'),
+					]
+				} else {
+					menuItems = [
 						projectData.tracking ? t('stopTracking') : t('startTracking'),
 						t('setIssue'),
 						t('enterTime'),
 						t('setActivity'),
 						t('sendTime'),
 						t('sendTimeAndChangeStatus'),
-					],
-					{ placeHolder: t('placeholder') }
-				)
+					]
+				}
+				const selection = await vscode.window.showQuickPick(menuItems, {
+					placeHolder: t('placeholder'),
+				})
 
 				switch (selection) {
 					case t('stopTracking'):
