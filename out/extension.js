@@ -34,7 +34,6 @@ let statusBarItem;
 let interval;
 let projectData;
 let projectFilePath;
-let lastActivityTime = Date.now();
 function activate(context) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) {
@@ -68,17 +67,35 @@ function activate(context) {
     statusBarItem.command = 'devylmRedmine.showContextMenu';
     context.subscriptions.push(statusBarItem);
     updateStatusBar();
-    if (projectData.autoTracking) {
-        vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-        vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-        setInterval(() => {
-            const idle = (Date.now() - lastActivityTime) / 1000;
-            if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
+    vscode.workspace.onDidChangeTextDocument(() => {
+        lastActivityTime = Date.now();
+        const autoTracking = vscode.workspace
+            .getConfiguration('redmineByDeVylm')
+            .get('autoTracking');
+        if (autoTracking && !projectData.tracking) {
+            startTracking();
+            vscode.window.showInformationMessage((0, lang_1.t)('autoStartedDueToEdit'));
+        }
+    });
+    let lastActivityTime = Date.now();
+    vscode.window.onDidChangeTextEditorSelection(() => {
+        lastActivityTime = Date.now();
+    });
+    setInterval(() => {
+        const idleTimeout = vscode.workspace
+            .getConfiguration('redmineByDeVylm')
+            .get('idleTimeout') || 300;
+        const autoTracking = vscode.workspace
+            .getConfiguration('redmineByDeVylm')
+            .get('autoTracking');
+        if (autoTracking && projectData.tracking) {
+            const now = Date.now();
+            if ((now - lastActivityTime) / 1000 > idleTimeout) {
                 stopTracking();
-                vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
+                vscode.window.showInformationMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
             }
-        }, 10000);
-    }
+        }
+    }, 10000);
     context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.showContextMenu', async () => {
         const selection = await vscode.window.showQuickPick([
             projectData.tracking ? (0, lang_1.t)('stopTracking') : (0, lang_1.t)('startTracking'),
@@ -108,17 +125,6 @@ function activate(context) {
                         projectData.total_tracked = Math.round(manual * 3600);
                         saveProjectData();
                         updateStatusBar();
-                        if (projectData.autoTracking) {
-                            vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-                            vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-                            setInterval(() => {
-                                const idle = (Date.now() - lastActivityTime) / 1000;
-                                if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                                    stopTracking();
-                                    vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-                                }
-                            }, 10000);
-                        }
                         vscode.window.showInformationMessage(`${(0, lang_1.t)('manualTimeSet')} ${manual}h`);
                     }
                 }
@@ -127,9 +133,10 @@ function activate(context) {
                 sendTimeEntry();
                 break;
             case (0, lang_1.t)('sendTimeAndChangeStatus'):
-                sendTimeAndChangeStatus();
-                break;
-                sendTimeEntry();
+                if (projectData.total_tracked > 0) {
+                    await sendTimeEntry();
+                }
+                await changeIssueStatus();
                 break;
             case (0, lang_1.t)('setActivity'):
                 setActivityId();
@@ -138,6 +145,29 @@ function activate(context) {
     }));
     context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.setActivityId', () => {
         setActivityId();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.toggleTracking', () => {
+        if (projectData.tracking) {
+            stopTracking();
+        }
+        else {
+            startTracking();
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.sendTimeEntry', () => {
+        sendTimeEntry();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.setActiveIssue', () => {
+        selectIssueFromList();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.setSettings', () => {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'redmineByDeVylm');
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('devylmRedmine.sendTimeAndChangeStatus', () => {
+        if (projectData.total_tracked > 0) {
+            sendTimeEntry();
+        }
+        changeIssueStatus();
     }));
 }
 exports.activate = activate;
@@ -154,30 +184,7 @@ function startTracking() {
     projectData.last_start = new Date().toISOString();
     saveProjectData();
     updateStatusBar();
-    if (projectData.autoTracking) {
-        vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-        vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-        setInterval(() => {
-            const idle = (Date.now() - lastActivityTime) / 1000;
-            if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                stopTracking();
-                vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-            }
-        }, 10000);
-    }
-    interval = setInterval(() => updateStatusBar());
-    if (projectData.autoTracking) {
-        vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-        vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-        setInterval(() => {
-            const idle = (Date.now() - lastActivityTime) / 1000;
-            if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                stopTracking();
-                vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-            }
-        }, 10000);
-    }
-    1000;
+    interval = setInterval(() => updateStatusBar(), 1000);
 }
 function stopTracking() {
     if (projectData.last_start) {
@@ -190,32 +197,10 @@ function stopTracking() {
     projectData.last_start = null;
     saveProjectData();
     updateStatusBar();
-    if (projectData.autoTracking) {
-        vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-        vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-        setInterval(() => {
-            const idle = (Date.now() - lastActivityTime) / 1000;
-            if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                stopTracking();
-                vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-            }
-        }, 10000);
-    }
     if (interval)
         clearInterval(interval);
 }
-if (projectData.autoTracking) {
-    vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-    vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-    setInterval(() => {
-        const idle = (Date.now() - lastActivityTime) / 1000;
-        if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-            stopTracking();
-            vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-        }
-    }, 10000);
-}
-{
+function updateStatusBar() {
     let totalSeconds = projectData.total_tracked;
     if (projectData.tracking && projectData.last_start) {
         const lastStart = new Date(projectData.last_start);
@@ -271,17 +256,6 @@ function sendTimeEntry() {
             projectData.total_tracked = 0;
             saveProjectData();
             updateStatusBar();
-            if (projectData.autoTracking) {
-                vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-                vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-                setInterval(() => {
-                    const idle = (Date.now() - lastActivityTime) / 1000;
-                    if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                        stopTracking();
-                        vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-                    }
-                }, 10000);
-            }
         }
         else {
             vscode.window.showErrorMessage(`${(0, lang_1.t)('sendError')} ${res.statusCode}`);
@@ -343,7 +317,7 @@ async function selectIssueFromList() {
     if (!projectData.api_key ||
         !projectData.redmine_url ||
         !projectData.redmine_project_id) {
-        vscode.window.showErrorMessage('Missing required Redmine configuration.');
+        vscode.window.showErrorMessage((0, lang_1.t)('missingRequiredConfiguration'));
         return;
     }
     vscode.window.showInformationMessage((0, lang_1.t)('fetchingIssues'));
@@ -375,17 +349,6 @@ async function selectIssueFromList() {
             projectData.active_issue_id = picked.issueId;
             saveProjectData();
             updateStatusBar();
-            if (projectData.autoTracking) {
-                vscode.workspace.onDidChangeTextDocument(() => lastActivityTime = Date.now());
-                vscode.window.onDidChangeTextEditorSelection(() => lastActivityTime = Date.now());
-                setInterval(() => {
-                    const idle = (Date.now() - lastActivityTime) / 1000;
-                    if (projectData.tracking && idle >= (projectData.idleTimeout || 300)) {
-                        stopTracking();
-                        vscode.window.showWarningMessage((0, lang_1.t)('autoStoppedDueToInactivity'));
-                    }
-                }, 10000);
-            }
             vscode.window.showInformationMessage(`${(0, lang_1.t)('setIssueConfirm')} #${picked.issueId}`);
         }
     }
@@ -393,44 +356,52 @@ async function selectIssueFromList() {
         vscode.window.showErrorMessage(`${(0, lang_1.t)('requestError')} ${err.message}`);
     }
 }
-async function sendTimeAndChangeStatus() {
-    sendTimeEntry();
+async function changeIssueStatus() {
     reloadProjectData();
-    if (!projectData.redmine_project_id || !projectData.api_key || !projectData.redmine_url || !projectData.active_issue_id)
-        return;
     const url = `${projectData.redmine_url}/issue_statuses.json?key=${projectData.api_key}`;
     try {
         const json = await fetchJson(url);
         const statuses = json.issue_statuses;
-        const pickItems = statuses.map((s) => ({ label: s.name, statusId: s.id }));
+        if (!statuses || statuses.length === 0) {
+            vscode.window.showWarningMessage((0, lang_1.t)('noStatusesFound'));
+            return;
+        }
+        const pickItems = statuses.map((status) => ({
+            label: status.name,
+            description: `ID: ${status.id}`,
+            id: status.id,
+        }));
         const picked = await vscode.window.showQuickPick(pickItems, {
             placeHolder: (0, lang_1.t)('chooseStatus'),
-            matchOnDescription: true
+            matchOnDescription: true,
         });
-        if (picked) {
-            const payload = JSON.stringify({ issue: { status_id: picked.statusId } });
-            const changeUrl = new URL(`${projectData.redmine_url}/issues/${projectData.active_issue_id}.json?key=${projectData.api_key}`);
-            const options = {
-                hostname: changeUrl.hostname,
-                path: changeUrl.pathname + changeUrl.search,
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(payload)
-                }
-            };
-            const req = https.request(options, res => {
-                if (res.statusCode === 200) {
-                    vscode.window.showInformationMessage(`${(0, lang_1.t)('statusChangedTo')} ${picked.label}`);
-                }
-                else {
-                    vscode.window.showErrorMessage(`Status change failed: ${res.statusCode}`);
-                }
-            });
-            req.on('error', err => vscode.window.showErrorMessage(`${(0, lang_1.t)('requestError')} ${err.message}`));
-            req.write(payload);
-            req.end();
-        }
+        if (!picked)
+            return;
+        const issueId = projectData.active_issue_id;
+        const updateUrl = `${projectData.redmine_url}/issues/${issueId}.json?key=${projectData.api_key}`;
+        const payload = JSON.stringify({ issue: { status_id: picked.id } });
+        const options = {
+            method: 'PUT',
+            hostname: new URL(updateUrl).hostname,
+            path: new URL(updateUrl).pathname + new URL(updateUrl).search,
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+            },
+        };
+        const req = https.request(options, res => {
+            if (res.statusCode === 204) {
+                vscode.window.showInformationMessage(`${(0, lang_1.t)('statusUpdated')} ${picked.label}`);
+            }
+            else {
+                vscode.window.showErrorMessage(`${(0, lang_1.t)('statusUpdateFailed')} ${res.statusCode}`);
+            }
+        });
+        req.on('error', err => {
+            vscode.window.showErrorMessage(`${(0, lang_1.t)('requestError')} ${err.message}`);
+        });
+        req.write(payload);
+        req.end();
     }
     catch (err) {
         vscode.window.showErrorMessage(`${(0, lang_1.t)('requestError')} ${err.message}`);

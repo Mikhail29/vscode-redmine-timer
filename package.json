@@ -2,13 +2,28 @@
 	"name": "redmine-by-devylm",
 	"displayName": "Redmine by DeVylM",
 	"description": "Lightweight automatic time tracker for Redmine with task context. Built by DeVylM.",
-	"version": "0.3.0",
+	"version": "1.0.0",
 	"publisher": "devylm",
+	"categories": [
+		"Other"
+	],
+	"icon": "images/icon.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Mikhail29/vscode-redmine-timer.git"
+	},
+	"license": "MIT",
 	"engines": {
 		"vscode": "^1.60.0"
 	},
 	"activationEvents": [
-		"*"
+		"onCommand:devylmRedmine.showContextMenu",
+		"onCommand:devylmRedmine.toggleTracking",
+		"onCommand:devylmRedmine.sendTimeEntry",
+		"onCommand:devylmRedmine.setActiveIssue",
+		"onCommand:devylmRedmine.setSettings",
+		"onCommand:devylmRedmine.sendTimeAndChangeStatus",
+		"onStartupFinished"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -28,11 +43,25 @@
 			{
 				"command": "devylmRedmine.setSettings",
 				"title": "Redmine by DeVylM: Set API/Project Settings"
+			},
+			{
+				"command": "devylmRedmine.sendTimeAndChangeStatus",
+				"title": "Redmine by DeVylM: Send Time Entry and Change Status"
 			}
 		],
 		"configuration": {
 			"title": "Redmine by DeVylM",
 			"properties": {
+				"redmineByDeVylm.autoTracking": {
+					"type": "boolean",
+					"default": true,
+					"description": "Automatically start time tracking on activity."
+				},
+				"redmineByDeVylm.idleTimeout": {
+					"type": "number",
+					"default": 300,
+					"description": "Time in seconds of inactivity after which tracking stops."
+				},
 				"redmineByDeVylm.apiKey": {
 					"type": "string",
 					"default": "",

@@ -61,6 +61,41 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(statusBarItem)
 	updateStatusBar()
 
+	vscode.workspace.onDidChangeTextDocument(() => {
+		lastActivityTime = Date.now()
+
+		const autoTracking = vscode.workspace
+			.getConfiguration('redmineByDeVylm')
+			.get<boolean>('autoTracking')
+		if (autoTracking && !projectData.tracking) {
+			startTracking()
+			vscode.window.showInformationMessage(t('autoStartedDueToEdit'))
+		}
+	})
+
+	let lastActivityTime = Date.now()
+
+	vscode.window.onDidChangeTextEditorSelection(() => {
+		lastActivityTime = Date.now()
+	})
+
+	setInterval(() => {
+		const idleTimeout =
+			vscode.workspace
+				.getConfiguration('redmineByDeVylm')
+				.get<number>('idleTimeout') || 300
+		const autoTracking = vscode.workspace
+			.getConfiguration('redmineByDeVylm')
+			.get<boolean>('autoTracking')
+		if (autoTracking && projectData.tracking) {
+			const now = Date.now()
+			if ((now - lastActivityTime) / 1000 > idleTimeout) {
+				stopTracking()
+				vscode.window.showInformationMessage(t('autoStoppedDueToInactivity'))
+			}
+		}
+	}, 10000)
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
 			'devylmRedmine.showContextMenu',
@@ -72,6 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
 						t('enterTime'),
 						t('setActivity'),
 						t('sendTime'),
+						t('sendTimeAndChangeStatus'),
 					],
 					{ placeHolder: t('placeholder') }
 				)
@@ -105,6 +141,12 @@ export function activate(context: vscode.ExtensionContext) {
 					case t('sendTime'):
 						sendTimeEntry()
 						break
+					case t('sendTimeAndChangeStatus'):
+						if (projectData.total_tracked > 0) {
+							await sendTimeEntry()
+						}
+						await changeIssueStatus()
+						break
 					case t('setActivity'):
 						setActivityId()
 						break
@@ -117,6 +159,49 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('devylmRedmine.setActivityId', () => {
 			setActivityId()
 		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('devylmRedmine.toggleTracking', () => {
+			if (projectData.tracking) {
+				stopTracking()
+			} else {
+				startTracking()
+			}
+		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('devylmRedmine.sendTimeEntry', () => {
+			sendTimeEntry()
+		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('devylmRedmine.setActiveIssue', () => {
+			selectIssueFromList()
+		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('devylmRedmine.setSettings', () => {
+			vscode.commands.executeCommand(
+				'workbench.action.openSettings',
+				'redmineByDeVylm'
+			)
+		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'devylmRedmine.sendTimeAndChangeStatus',
+			() => {
+				if (projectData.total_tracked > 0) {
+					sendTimeEntry()
+				}
+				changeIssueStatus()
+			}
+		)
 	)
 }
 
@@ -288,7 +373,7 @@ async function selectIssueFromList() {
 		!projectData.redmine_url ||
 		!projectData.redmine_project_id
 	) {
-		vscode.window.showErrorMessage('Missing required Redmine configuration.')
+		vscode.window.showErrorMessage(t('missingRequiredConfiguration'))
 		return
 	}
 
@@ -332,6 +417,71 @@ async function selectIssueFromList() {
 				`${t('setIssueConfirm')} #${picked.issueId}`
 			)
 		}
+	} catch (err: any) {
+		vscode.window.showErrorMessage(`${t('requestError')} ${err.message}`)
+	}
+}
+
+async function changeIssueStatus() {
+	reloadProjectData()
+
+	const url = `${projectData.redmine_url}/issue_statuses.json?key=${projectData.api_key}`
+	try {
+		const json = await fetchJson(url)
+		const statuses = json.issue_statuses
+		if (!statuses || statuses.length === 0) {
+			vscode.window.showWarningMessage(t('noStatusesFound'))
+			return
+		}
+
+		const pickItems = statuses.map((status: any) => ({
+			label: status.name,
+			description: `ID: ${status.id}`,
+			id: status.id,
+		}))
+
+		const picked = await vscode.window.showQuickPick<{
+			label: string
+			id: number
+		}>(pickItems, {
+			placeHolder: t('chooseStatus'),
+			matchOnDescription: true,
+		})
+
+		if (!picked) return
+
+		const issueId = projectData.active_issue_id
+		const updateUrl = `${projectData.redmine_url}/issues/${issueId}.json?key=${projectData.api_key}`
+		const payload = JSON.stringify({ issue: { status_id: picked.id } })
+
+		const options = {
+			method: 'PUT',
+			hostname: new URL(updateUrl).hostname,
+			path: new URL(updateUrl).pathname + new URL(updateUrl).search,
+			headers: {
+				'Content-Type': 'application/json',
+				'Content-Length': Buffer.byteLength(payload),
+			},
+		}
+
+		const req = https.request(options, res => {
+			if (res.statusCode === 204) {
+				vscode.window.showInformationMessage(
+					`${t('statusUpdated')} ${picked.label}`
+				)
+			} else {
+				vscode.window.showErrorMessage(
+					`${t('statusUpdateFailed')} ${res.statusCode}`
+				)
+			}
+		})
+
+		req.on('error', err => {
+			vscode.window.showErrorMessage(`${t('requestError')} ${err.message}`)
+		})
+
+		req.write(payload)
+		req.end()
 	} catch (err: any) {
 		vscode.window.showErrorMessage(`${t('requestError')} ${err.message}`)
 	}
